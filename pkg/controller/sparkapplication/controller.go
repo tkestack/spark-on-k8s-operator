@@ -395,15 +395,19 @@ func (c *Controller) getAndUpdateExecutorState(app *v1beta2.SparkApplication) er
 	// Handle missing/deleted executors.
 	for name, oldStatus := range app.Status.ExecutorState {
 		_, exists := executorStateMap[name]
-		if !isExecutorTerminated(oldStatus) && !exists && !isDriverRunning(app) {
-			// If ApplicationState is COMPLETED, in other words, the driver pod has been completed
-			// successfully. The executor pods terminate and are cleaned up, so we could not found
-			// the executor pod, under this circumstances, we assume the executor pod are completed.
-			if app.Status.AppState.State == v1beta2.CompletedState {
-				app.Status.ExecutorState[name] = v1beta2.ExecutorCompletedState
+		if !isExecutorTerminated(oldStatus) && !exists {
+			if !isDriverRunning(app) {
+				// If ApplicationState is COMPLETED, in other words, the driver pod has been completed
+				// successfully. The executor pods terminate and are cleaned up, so we could not found
+				// the executor pod, under this circumstances, we assume the executor pod are completed.
+				if app.Status.AppState.State == v1beta2.CompletedState {
+					app.Status.ExecutorState[name] = v1beta2.ExecutorCompletedState
+				} else {
+					glog.Infof("Executor pod %s not found, assuming it was deleted.", name)
+					app.Status.ExecutorState[name] = v1beta2.ExecutorFailedState
+				}
 			} else {
-				glog.Infof("Executor pod %s not found, assuming it was deleted.", name)
-				app.Status.ExecutorState[name] = v1beta2.ExecutorFailedState
+				app.Status.ExecutorState[name] = v1beta2.ExecutorUnknownState
 			}
 		}
 	}
@@ -596,6 +600,14 @@ func (c *Controller) syncSparkApplication(key string) error {
 		if err != nil {
 			glog.Errorf("failed to update SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
 			return err
+		}
+
+		if state := appCopy.Status.AppState.State; state == v1beta2.CompletedState ||
+			state == v1beta2.FailedState {
+			if err := c.cleanUpOnTermination(app, appCopy); err != nil {
+				glog.Errorf("failed to clean up resources for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -1000,4 +1012,14 @@ func (c *Controller) hasApplicationExpired(app *v1beta2.SparkApplication) bool {
 	}
 
 	return false
+}
+
+// Clean up when the spark application is terminated.
+func (c *Controller) cleanUpOnTermination(oldApp, newApp *v1beta2.SparkApplication) error {
+	if needScheduling, scheduler := c.shouldDoBatchScheduling(newApp); needScheduling {
+		if err := scheduler.CleanupOnCompletion(newApp); err != nil {
+			return err
+		}
+	}
+	return nil
 }

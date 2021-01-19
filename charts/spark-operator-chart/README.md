@@ -17,10 +17,34 @@ The previous `spark-operator` Helm chart hosted at [helm/charts](https://github.
 
 - This repository **only** supports Helm chart installations using Helm 3+ since the `apiVersion` on the chart has been marked as `v2`.
 - Previous versions of the Helm chart have not been migrated, and the version has been set to `1.0.0` at the onset. If you are looking for old versions of the chart, it's best to run `helm pull incubator/sparkoperator --version <your-version>` until you are ready to move to this repository's version.
+- Several configuration properties have been changed, carefully review the [values](#values) section below to make sure you're aligned with the new values.
 
 ## Installing the chart
 
-TBD
+```shell
+
+$ helm repo add spark-operator https://googlecloudplatform.github.io/spark-on-k8s-operator
+
+$ helm install my-release spark-operator/spark-operator
+```
+
+This will create a release of `spark-operator` in the default namespace. To install in a different one:
+
+```shell
+$ helm install -n spark my-release spark-operator/spark-operator
+```
+
+Note that `helm` will fail to install if the namespace doesn't exist. Either create the namespace beforehand or pass the `--create-namespace` flag to the `helm install` command.
+
+## Uninstalling the chart
+
+To uninstall `my-release`:
+
+```shell
+$ helm uninstall my-release
+```
+
+The command removes all the Kubernetes components associated with the chart and deletes the release, except for the `crds`, those will have to be removed manually.
 
 ## Values
 
@@ -42,10 +66,16 @@ TBD
 | metrics.enable | bool | `true` | Enable prometheus mertic scraping |
 | metrics.endpoint | string | `"/metrics"` | Metrics serving endpoint |
 | metrics.port | int | `10254` | Metrics port |
+| metrics.portName | string | `metrics` | Metrics port name |
 | metrics.prefix | string | `""` | Metric prefix, will be added to all exported metrics |
 | nameOverride | string | `""` | String to partially override `spark-operator.fullname` template (will maintain the release name) |
 | nodeSelector | object | `{}` | Node labels for pod assignment |
 | podAnnotations | object | `{}` | Additional annotations to add to the pod |
+| podMonitor.enable | bool| `false` | Submit a prometheus pod monitor for operator's pod. Note that prometheus metrics should be enabled as well.|
+| podMonitor.labels | object | `{}` | Pod monitor labels |
+| podMonitor.jobLabel | string | `spark-operator-podmonitor` | The label to use to retrieve the job name from |
+| podMonitor.podMetricsEndpoint.scheme | string | `http` | Prometheus metrics endpoint scheme |
+| podMonitor.podMetricsEndpoint.interval | string | `5s` | Interval at which metrics should be scraped |
 | podSecurityContext | object | `{}` | Pod security context |
 | rbac.create | bool | `true` | Create and use `rbac` resources |
 | replicaCount | int | `1` | Desired number of pods, leaderElection will be enabled if this is greater than 1 |
